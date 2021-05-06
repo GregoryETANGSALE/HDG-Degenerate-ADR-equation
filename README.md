@@ -1,0 +1,2 @@
+# HIP_Degenerate_Advection_Diffusion_Reaction
+Hybridizable interior penalty discontinuous Galerkin method for degenerate advection-diffusion-reaction problems
