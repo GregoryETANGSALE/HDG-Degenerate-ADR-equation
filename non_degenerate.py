@@ -74,9 +74,10 @@ condense = True                 # static condensation
 # Main functions
 
 def FES():
-    # Finite Element Spaces
+    # Selecting interior polynomial basis for u (V) and facet polynomial basis for ubar (Vhat)
     V    = L2(mesh, order=order)
     Vhat = FacetFESpace(mesh, order=order, dirichlet="left|right|top|bottom")
+    # Primal HDG : Create the associated Finite Element space
     fes  = FESpace([V,Vhat], dgjumps=True)
     
     print ("vdofs:    ", fes.Range(0))
@@ -86,8 +87,10 @@ def FES():
 
 
 def stabilization_function(n,h):
+    # Definition of normal diffusivity
     Kn = InnerProduct( n, CoefficientFunction(kappa*n,dims=(2,1)) )
 
+    # Definition of IP Stabilisation (tau) parameters used in our HDG method
     if SG: # Scharfetter-Gummel
         tau_dif = gamma*Kn/h
         Pe = theta*beta*n / tau_dif
@@ -100,30 +103,37 @@ def stabilization_function(n,h):
 
 
 def Assembling(fes):
+    # Primal HDG : Create the associated discrete variables u & uhat
     u, uhat = fes.TrialFunction()
     v, vhat = fes.TestFunction()
 
     n = specialcf.normal(mesh.dim)      # unit normal
     h = specialcf.mesh_size             # element size
     
+    # Creating the bilinear form associated to our primal HDG method:
     a = BilinearForm(fes, eliminate_internal=condense)
 
+    # 1. Interior terms
     a_int = kappa*grad(u)*grad(v) - u*(beta*grad(v))
+    # 2. Boundary terms : residual
     a_fct = (kappa*grad(u)*n-u*beta*n)*(vhat-v)+epsilon*(kappa*grad(v)*n)*(uhat-u)
-    a_sip = stabilization_function(n,h)*(u-uhat)*(v-vhat)
+    a_sta = stabilization_function(n,h)*(u-uhat)*(v-vhat)
     
     a += SymbolicBFI( a_int )
-    a += SymbolicBFI( a_fct + a_sip , element_boundary=True )
+    a += SymbolicBFI( a_fct + a_sta , element_boundary=True )
 
+    # Creating the linear form associated to our primal HDG method:
     l = LinearForm(fes)
     l += SymbolicLFI(f*v)
 
+    # gfu : total vector of dof [u,uhat]
     gfu = GridFunction(fes)
 
     return a,l,gfu
 
 
 def compute_L2_error(uh):
+    # CalcL2Error computes the L2 error of the discrete variable ||u-uh||_X=sqrt(sum(||u-uh||^2_A))
     return sqrt( Integrate((uh-ue)**2, mesh, order=2*order ) )
 
 ##################################################################
@@ -133,10 +143,11 @@ def compute_L2_error(uh):
 fes = FES()
 [a,l,gfu]=Assembling(fes)
 
+# Assembly of bilinear a() and linear f() terms
 a.Assemble()
 l.Assemble()
 
-# Solve Linear System
+# Solve the Linear System (with or without static condensation)
 if condense:
     l.vec.data += a.harmonic_extension_trans * l.vec
 
